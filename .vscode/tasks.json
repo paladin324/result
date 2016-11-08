@@ -1,0 +1,8 @@
+{
+    "version": "0.1.0",
+    "command": "g++",
+    "isShellCommand": true,
+    "args": ["-std=c++11", "-O2", "-Wall", "-pedantic", "-pthread", "-omain", "main.cpp", "&&finished!"],
+    "showOutput": "silent",
+    "echoCommand": true
+}
