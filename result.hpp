@@ -28,7 +28,7 @@ namespace result
     } while (0);
 
 
-// Sadly will have to copy-paste this.
+// Sadly, will have to copy-paste this.
 #ifndef NO_TRY_ALIAS
 #define TRY(expr, ok) \
     do { \
@@ -183,13 +183,6 @@ Result<variants::NullOk, typename std::remove_reference<E>::type> err(E&& value)
     return Result<variants::NullOk, typename std::remove_reference<E>::type>(std::move(value), detail::ErrTag());
 }
 
-#ifdef NDEBUG
-// When this macro is defined
-// no additional checks for moved or 
-// invalid values will be made.
-#define RESULT_NO_INVALID_CHECKS 
-#endif
-
 template <typename T, typename E>
 class Result
 {
@@ -207,9 +200,6 @@ public:
     // Public typedefs
     typedef T OkType;
     typedef E ErrType;
-
-    typedef std::reference_wrapper<const T> OkRefType;
-    typedef std::reference_wrapper<const E> ErrRefType;
 
     // These all use the private tagged constructor
     friend Result<T, variants::NullErr> ok<>(T&);
@@ -231,7 +221,7 @@ public:
         }
         else
         {
-            // If an error - do the same.
+            // If an error - destroy it too.
             data_.err.~E();
         }
     }
@@ -245,20 +235,10 @@ public:
         {
             new (&data_.ok) T(result.unwrap());
         }
-// Generally, using moved values should not 
-// be used, but checking does not hurt.
-#ifndef RESULT_NO_INVALID_CHECKS
-        else if (State::Err = state_)
+        else
         {
-#endif
             new (&data_.err) E(result.unwrap_err());
-#ifndef RESULT_NO_INVALID_CHECKS
         }
-        else 
-        {
-            detail::panic("Panic: Called Result(const Result&) with a moved result!");
-        }
-#endif
     }
 
     // Move constructor.
@@ -270,19 +250,10 @@ public:
         {
             new (&data_.ok) T(std::move(result.unwrap()));
         }
-// Same as above.
-#ifndef RESULT_NO_INVALID_CHECKS
-        else if (State::Err == state_)
+        else 
         {
-#endif
             new (&data_.err) E(std::move(result.unwrap_err()));
-#ifndef RESULT_NO_INVALID_CHECKS
         }
-        else
-        {
-            detail::panic("Panic: Called Result(Result&&) with a moved result!");
-        }
-#endif
     }
 
     template <typename U>
@@ -290,20 +261,7 @@ public:
         : data_()
         , state_(result.state_)
     {
-// Just check the copy-ctor.
-#ifndef RESULT_NO_INVALID_CHECKS
-        if (State::Ok == state_) 
-        {
-#endif
-            new (&data_.ok) T(std::move(result.unwrap()));
-#ifndef RESULT_NO_INVALID_CHECKS
-        }
-        else 
-        {
-            detail::panic("Panic: Called Result(Result<U, variants::NullErr>&&) with %s result!",
-                State::Err == state_ ? "an erroneous" : "a moved");
-        }
-#endif
+        new (&data_) OkOrErr(std::move(result.unwrap()), OkTag());
     }
 
     template <typename F>
@@ -311,20 +269,7 @@ public:
         : data_()
         , state_(result.state_)
     {
-// Just check the copy-ctor.
-#ifndef RESULT_NO_INVALID_CHECKS
-        if (State::Err == state_)
-        {
-#endif
-            new (&data_.err) E(std::move(result.unwrap_err()));
-#ifndef RESULT_NO_INVALID_CHECKS
-        }
-        else 
-        {
-            detail::panic("Panic: Called Result(Result<variants::NullOk, F>&&) with %s result!",
-                State::Err == state_ ? "an erroneous" : "a moved");
-        }
-#endif
+        new (&data_) OkOrErr(std::move(result.unwrap_err()), ErrTag());
     }
 
     // Is the value Ok?
@@ -339,17 +284,40 @@ public:
         return State::Err == state_;
     }
 
+    operator bool() const 
+    {
+        return State::Ok == state_;
+    }
+
     // Converts to a result referencing this,
     // without moving the values.
-    Result<OkRefType, ErrRefType> as_ref() const
+    Result<std::reference_wrapper<T>, std::reference_wrapper<E>> as_ref()
     {
         if (State::Ok == state_) 
         {
-            return Result<OkRefType, ErrRefType>(OkRefType(data_.ok), OkTag());
+            return Result<std::reference_wrapper<T>, std::reference_wrapper<E>>(std::reference_wrapper<T>(data_.ok), OkTag());
         }
         else if (State::Err == state_)
         {
-            return Result<OkRefType, ErrRefType>(ErrRefType(data_.err), ErrTag());
+            return Result<std::reference_wrapper<T>, std::reference_wrapper<E>>(std::reference_wrapper<E>(data_.err), ErrTag());
+        }
+        else
+        {
+            detail::panic("Panic: Called as_ref() on a moved result!");
+        }
+    }
+
+    // Converts to a result referencing this,
+    // without moving the values.
+    Result<std::reference_wrapper<const T>, std::reference_wrapper<const E>> as_ref() const
+    {
+        if (State::Ok == state_) 
+        {
+            return Result<std::reference_wrapper<const T>, std::reference_wrapper<const E>>(std::reference_wrapper<const T>(data_.ok), OkTag());
+        }
+        else if (State::Err == state_)
+        {
+            return Result<std::reference_wrapper<const T>, std::reference_wrapper<const E>>(std::reference_wrapper<const E>(data_.err), ErrTag());
         }
         else
         {
@@ -373,6 +341,67 @@ public:
         }
     }
 
+    // *Moves* the value and returns it, if it is Ok,
+    // or returns optb.
+    T unwrap_or(T&& optb)
+    {
+        if (State::Ok == state_)
+        {
+            state_ = State::MovedOk;
+            return std::move(data_.ok);
+        }
+        else
+        {
+            return std::move(optb);
+        }
+    }
+
+    // *Moves* the value and returns it, if it is Ok,
+    // or returns the value of op().
+    template <typename F>
+    T unwrap_or_else(F&& op)
+    {
+        if (State::Ok == state_)
+        {
+            state_ = State::MovedOk;
+            return std::move(data_.ok);
+        }
+        else
+        {
+            return op();
+        }
+    }
+
+    // *Moves* the value and returns it, if it is Ok,
+    // or returns the default value of T.
+    T unwrap_or_default()
+    {
+        if (State::Ok == state_)
+        {
+            state_ = State::MovedOk;
+            return std::move(data_.ok);
+        }
+        else
+        {
+            return T();
+        }
+    }
+
+    // Unwraps the result if Ok, or panics / throws an
+    // error with the contents of msg.
+    T expect(const char* const msg)
+    {
+        if (State::Ok == state_)
+        {
+            state_ = State::MovedOk;
+            return std::move(data_.ok);
+        }
+        else
+        {
+            detail::panic(msg);
+        }
+    }
+
     // *Moves* the value and returns it, if it is Err,
     // or throws / panics.
     E unwrap_err()
@@ -389,18 +418,106 @@ public:
         }
     }
 
-    // Calls either if_ok or if_err, depending
-    // on the state of the result.
-    template <typename IfOk, typename IfErr>
-    void match(IfOk&& if_ok, IfErr&& if_err)
+    // If the result is Ok,
+    // returns res.
+    template <typename U>
+    Result<U, E> all(Result<U, E>&& res)
     {
-        if (State::Ok == state_) 
+        if (State::Ok == state_)
         {
-            if_ok(unwrap());
+            return std::move(res);
         }
         else 
         {
-            if_err(unwrap_err());
+            return Result<U, E>(unwrap_err(), ErrTag());
+        }
+    }
+
+    // If the result is Ok,
+    // returns the value of op().
+    template <typename F>
+    Result<typename std::result_of<F()>::type, E> all_then(F&& op)
+    {
+        if (State::Ok == state_)
+        {
+            return op();
+        }
+        else 
+        {
+            return Result<typename std::result_of<F()>::type, E>(unwrap_err(), ErrTag());
+        }
+    }
+
+    template <typename F>
+    Result<T, F> any(Result<T, F>&& result)
+    {
+        if (State::Err == state_)
+        {
+            return std::move(result);
+        }
+        else
+        {
+            return Result<T, F>(unwrap(), OkTag());
+        }
+    }
+
+    template <typename F>
+    Result<T, typename std::result_of<F()>::type> any_else(F&& op)
+    {
+        if (State::Err == state_)
+        {
+            return op();
+        }
+        else
+        {
+            return Result<T, typename std::result_of<F()>::type>(unwrap(), OkTag());
+        }
+    }
+
+    // Calls either if_ok or if_err, with the unwrapped value,
+    // depending on the state of the result. 
+    template <typename IfOk, typename IfErr,
+        typename = typename std::is_same<
+            typename std::result_of<IfOk(T)>::type,
+            typename std::result_of<IfErr(E)>::type
+        >::type>
+    typename std::result_of<IfOk(T)>::type match(IfOk&& if_ok, IfErr&& if_err)
+    {
+        if (State::Ok == state_) 
+        {
+            return if_ok(unwrap());
+        }
+        else
+        {
+            return if_err(unwrap_err());
+        }
+    }
+
+    // maps
+    
+    template <class F>
+    Result<typename std::result_of<F(T)>::type, E> map(const F& project)
+    {
+        if (State::Ok == state_)
+        {
+            return Result<typename std::result_of<F(T)>::type, E>(project(unwrap()), OkTag());
+        } 
+        else 
+        {
+            return Result<typename std::result_of<F(T)>::type, E>(unwrap_err(), ErrTag());
+        }
+    }
+
+    template <class F>
+    Result<T, typename std::result_of<F(E)>::type> map_err(const F& project)
+    {
+        if (State::Err == state_)
+        {
+            return Result<T, typename std::result_of<F(E)>::type>(project(unwrap_err()), ErrTag());
+        }
+        else
+        {
+            return Result<T, typename std::result_of<F(E)>::type>(unwrap(), OkTag());
         }
     }
 
@@ -444,8 +561,6 @@ private:
     }
 
 };
-
-#undef RESULT_NO_INVALID_CHECKS
 
 } // namespace result
 
