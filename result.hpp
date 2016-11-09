@@ -25,8 +25,7 @@ namespace result
         } else { \
             return err(result.unwrap_err()); \
         } \
-    } while (0);
-
+    } while (0)
 
 // Sadly, will have to copy-paste this.
 #ifndef NO_TRY_ALIAS
@@ -38,7 +37,7 @@ namespace result
         } else { \
             return err(result.unwrap_err()); \
         } \
-    } while (0);
+    } while (0)
 #endif
 
 namespace detail
