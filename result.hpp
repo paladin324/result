@@ -155,10 +155,10 @@ enum class ResultState : char
 } // namespace detail
 
 // Constructs an Ok Result.
-template <typename T>
-Result<typename std::remove_reference<T>::type, variants::NullErr> ok(const T& value)
+template <typename T, typename E = variants::NullErr>
+Result<typename std::remove_reference<T>::type, E> ok(const T& value)
 {
-    return Result<typename std::remove_reference<T>::type, variants::NullErr>(value, detail::OkTag());
+    return Result<typename std::remove_reference<T>::type, E>(value, detail::OkTag());
 }
 
 // Constructs an Err Result.
@@ -168,11 +168,17 @@ Result<variants::NullOk, typename std::remove_reference<E>::type> err(const E& v
     return Result<variants::NullOk, typename std::remove_reference<E>::type>(value, detail::ErrTag());
 }
 
-// Constructs an Ok Result.
-template <typename T>
-Result<typename std::remove_reference<T>::type, variants::NullErr> ok(T&& value)
+template <typename T, typename E>
+Result<T, typename std::remove_reference<E>::type> err(const E& value)
 {
-    return Result<typename std::remove_reference<T>::type, variants::NullErr>(std::move(value), detail::OkTag());
+    return Result<T, typename std::remove_reference<E>::type>(value, detail::ErrTag());
+}
+
+// Constructs an Ok Result.
+template <typename T, typename E = variants::NullErr>
+Result<typename std::remove_reference<T>::type, E> ok(T&& value)
+{
+    return Result<typename std::remove_reference<T>::type, E>(std::move(value), detail::OkTag());
 }
 
 // Constructs an Err Result.
@@ -180,6 +186,12 @@ template <typename E>
 Result<variants::NullOk, typename std::remove_reference<E>::type> err(E&& value)
 {
     return Result<variants::NullOk, typename std::remove_reference<E>::type>(std::move(value), detail::ErrTag());
+}
+
+template <typename T, typename E>
+Result<T, typename std::remove_reference<E>::type> err(E&& value)
+{
+    return Result<T, typename std::remove_reference<E>::type>(std::move(value), detail::ErrTag());
 }
 
 template <typename T, typename E>
@@ -201,6 +213,12 @@ public:
     typedef E ErrType;
 
     // These all use the private tagged constructor
+    friend Result<T, E> ok<>(T&);
+    friend Result<T, E> err<>(E&);
+    friend Result<T, E> ok<>(const T&);
+    friend Result<T, E> err<>(const E&);
+    friend Result<T, E> ok<>(T&&);
+    friend Result<T, E> err<>(E&&);
     friend Result<T, variants::NullErr> ok<>(T&);
     friend Result<variants::NullOk, E> err<>(E&);
     friend Result<T, variants::NullErr> ok<>(const T&);
@@ -560,6 +578,29 @@ private:
     }
 
 };
+
+template <typename T, typename E>
+bool operator==(const Result<T, E>& lhs, const Result<T, E>& rhs)
+{
+    if (lhs.is_ok() && rhs.is_ok())
+    {
+        return lhs.as_ref().unwrap() == rhs.as_ref().unwrap();
+    }
+    else if (lhs.is_err() && rhs.is_err())
+    {
+        return lhs.as_ref().unwrap_err() == rhs.as_ref().unwrap_err();
+    }
+    else
+    {
+        return false;
+    }
+}
+
+template <typename T, typename E>
+bool operator!=(const Result<T, E>& lhs, const Result<T, E>& rhs)
+{
+    return !(lhs == rhs);
+}
 
 } // namespace result
 

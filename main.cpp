@@ -70,6 +70,13 @@ void test_map()
     assert(err(10).map_err(square).unwrap_err() == 100);
 }
 
+void test_eq()
+{
+    assert((ok<int, int>(10) == ok<int, int>(10)));
+    assert((err<int, int>(10) == err<int, int>(10)));
+    assert((ok<int, int>(10) != err<int, int>(10)));
+}
+
 void run_all_tests()
 {
     test_ok();
@@ -78,4 +85,5 @@ void run_all_tests()
     test_as_ref();
     test_match();
     test_map();
+    test_eq();
 }
